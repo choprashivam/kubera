@@ -1,0 +1,269 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "cockroachdb"
+    url      = env("DATABASE_URL")
+}
+
+model Account {
+    id                       String  @id @default(cuid())
+    userId                   String
+    type                     String
+    provider                 String
+    providerAccountId        String
+    refresh_token            String?
+    access_token             String?
+    expires_at               Int?
+    token_type               String?
+    scope                    String?
+    id_token                 String?
+    session_state            String?
+    refresh_token_expires_in Int?
+    user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerAccountId])
+}
+
+model Session {
+    id           String   @id @default(cuid())
+    ifinId       String?
+    sessionToken String   @unique
+    userId       String
+    expires      DateTime
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    crm          CRM?     @relation(fields: [ifinId], references: [ifinId])
+}
+
+model User {
+    id            String    @id @default(cuid())
+    name          String?
+    email         String?   @unique
+    emailVerified DateTime?
+    image         String?
+    isAdmin       Boolean   @default(false)
+    accounts      Account[]
+    crm           CRM[]
+    sessions      Session[]
+}
+
+model VerificationToken {
+    identifier String
+    token      String   @unique
+    expires    DateTime
+
+    @@unique([identifier, token])
+}
+
+model Application {
+    applicationId String        @id @default(cuid())
+    name          String
+    credentials   Credentials[]
+}
+
+enum AccountStatus {
+    ACTIVE
+    INACTIVE
+}
+
+enum AccountType {
+    FNO
+    CASH
+    MF
+}
+
+model CRM {
+    ifinId               String                 @id @default(cuid())
+    clientName           String
+    brokerId             String                 @unique
+    phoneNo              String                 @db.Char(10)
+    email                String
+    address              String
+    accountOpenDate      DateTime               @db.Date
+    accountType          AccountType[]          @default([])
+    accountStatus        AccountStatus
+    user                 User                   @relation(fields: [email], references: [email])
+    clientMargin         ClientMargin[]
+    credentials          Credentials[]
+    holdingsTransactions HoldingsTransactions[]
+    ledger               Ledger[]
+    pnlAdjustment        PnlAdjustment[]
+    realisedPnl          RealisedPnl[]
+    investedCash         InvestedCash[]
+    withdrawnCash        WithdrawnCash[]
+    session              Session[]
+    currentLedgerBalance CurrentLedgerBalance[]
+    todayAlgoPnl         TodayAlgoPnl[]
+
+    @@index([clientName])
+}
+
+model ClientMargin {
+    marginId String  @id @default(cuid())
+    ifinId   String  @unique
+    margin   Decimal @db.Decimal(14, 2)
+    crm      CRM     @relation(fields: [ifinId], references: [ifinId])
+}
+
+model Credentials {
+    credentialsId String      @id @default(cuid())
+    ifinId        String
+    applicationId String
+    userName      String
+    userPassword  String
+    pin           String?
+    application   Application @relation(fields: [applicationId], references: [applicationId])
+    crm           CRM         @relation(fields: [ifinId], references: [ifinId])
+}
+
+enum ScripsExchange {
+    N
+    B
+    M
+}
+
+enum ScripsExchangeType {
+    C
+    D
+    U
+}
+
+enum Service {
+    IIFL
+    MFAPI
+}
+
+model Scrips {
+    scripsId             String                 @id @default(cuid())
+    name                 String
+    scripcode            String
+    exchange             ScripsExchange
+    exchangeType         ScripsExchangeType
+    service              Service
+    cmp                  Decimal                @db.Decimal(14, 2)
+    holdingsTransactions HoldingsTransactions[]
+
+    @@unique(name: "likeScripcode", [scripcode, service])
+    @@index([name])
+}
+
+enum OwnedBy {
+    IFIN
+    CUSTOMER
+}
+
+enum FundSource {
+    INSIDE_ACCOUNT
+    OUTSIDE_ACCOUNT
+}
+
+model HoldingsTransactions {
+    holdingsTransactionsId String     @id @default(cuid())
+    ifinId                 String
+    scripsId               String
+    buyQuantity            Decimal    @default(0) @db.Decimal(14, 2)
+    buyPrice               Decimal    @default(0) @db.Decimal(14, 2)
+    buyValue               Decimal    @default(0) @db.Decimal(14, 2)
+    buyDate                DateTime?  @db.Date
+    sellQuantity           Decimal    @default(0) @db.Decimal(14, 2)
+    sellPrice              Decimal    @default(0) @db.Decimal(14, 2)
+    sellValue              Decimal    @default(0) @db.Decimal(14, 2)
+    sellDate               DateTime?  @db.Date
+    openQuantity           Decimal    @db.Decimal(14, 2)
+    unrealisedPnl          Decimal    @default(0) @db.Decimal(14, 2)
+    marketValue            Decimal    @default(0) @db.Decimal(14, 2)
+    ownedBy                OwnedBy
+    sourceOfFunds          FundSource
+    fromDate               DateTime   @db.Date
+    toDate                 DateTime   @db.Date
+    scrips                 Scrips     @relation(fields: [scripsId], references: [scripsId])
+    crm                    CRM        @relation(fields: [ifinId], references: [ifinId])
+}
+
+enum LedgerEntryType {
+    INVESTMENT
+    CHARGES
+    INTER_DP_STOCK_SOLD
+    CUSTOMER_CONTRIBUTED_PNL
+}
+
+model Ledger {
+    ledgerId        String          @id @default(cuid())
+    ifinId          String
+    amount          Decimal         @db.Decimal(14, 2)
+    ledgerEntryType LedgerEntryType
+    fromDate        DateTime        @db.Date
+    toDate          DateTime        @db.Date
+    crm             CRM             @relation(fields: [ifinId], references: [ifinId])
+}
+
+model PnlAdjustment {
+    pnlAdjustmentId String   @id @default(cuid())
+    ifinId          String
+    adjustment      Decimal  @db.Decimal(14, 2)
+    comment         String
+    fromDate        DateTime @db.Date
+    toDate          DateTime @db.Date
+    crm             CRM      @relation(fields: [ifinId], references: [ifinId])
+}
+
+enum EntryType {
+    FNO_INTRADAY
+    FNO_EQUITY
+    EQUITY
+    MCX
+    DIVIDEND
+    MF
+    FNO_EQUITY_ADJUSTMENT
+}
+
+enum pnlContributedBy {
+    IFIN
+    CUSTOMER
+}
+
+model RealisedPnl {
+    realisedPnlId    String           @id @default(cuid())
+    ifinId           String
+    pnl              Decimal          @db.Decimal(14, 2)
+    entryType        EntryType
+    pnlContributedBy pnlContributedBy
+    fromDate         DateTime         @db.Date
+    toDate           DateTime         @db.Date
+    crm              CRM              @relation(fields: [ifinId], references: [ifinId])
+}
+
+model InvestedCash {
+    investedCashId String   @id @default(cuid())
+    ifinId         String
+    amount         Decimal  @db.Decimal(14, 2)
+    fromDate       DateTime @db.Date
+    toDate         DateTime @db.Date
+    crm            CRM      @relation(fields: [ifinId], references: [ifinId])
+}
+
+model WithdrawnCash {
+    withdrawnCashId String  @id @default(cuid())
+    ifinId          String  @unique
+    amount          Decimal @db.Decimal(14, 2)
+    crm             CRM     @relation(fields: [ifinId], references: [ifinId])
+}
+
+model CurrentLedgerBalance {
+    currentLedgerBalanceId String  @id @default(cuid())
+    ifinId                 String  @unique
+    amount                 Decimal @db.Decimal(14, 2)
+    crm                    CRM     @relation(fields: [ifinId], references: [ifinId])
+}
+
+model TodayAlgoPnl {
+    todayAlgoPnlId String  @id @default(cuid())
+    ifinId         String  @unique
+    amount         Decimal @db.Decimal(14, 2)
+    crm            CRM     @relation(fields: [ifinId], references: [ifinId])
+}
+
+enum crdb_internal_region {
+    aws_ap_south_1 @map("aws-ap-south-1")
+}
